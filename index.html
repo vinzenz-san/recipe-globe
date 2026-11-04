@@ -1,0 +1,896 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GourmetLM Globus</title>
+<style>
+  :root {
+    --bg: #05070d;
+    --panel: rgba(16, 20, 30, 0.92);
+    --line: rgba(255, 255, 255, 0.09);
+    --text: #e9ecf2;
+    --muted: #9aa3b5;
+    --accent: #f2a541;
+    --ok: #6fcf97;
+    --warn: #f2c94c;
+    --chip: rgba(255, 255, 255, 0.07);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); overflow: hidden; }
+  #globe { position: fixed; inset: 0; }
+
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+          backdrop-filter: blur(8px); box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45); }
+
+  #top { position: fixed; top: 16px; left: 16px; width: min(360px, calc(100vw - 32px)); padding: 14px 16px; z-index: 3; }
+  #top h1 { margin: 0 0 2px; font-size: 17px; letter-spacing: 0.2px; }
+  #top h1 span { color: var(--accent); }
+  #top p { margin: 0 0 10px; font-size: 12.5px; color: var(--muted); }
+  input[type=search] { width: 100%; padding: 9px 11px; border-radius: 9px; border: 1px solid var(--line);
+                       background: rgba(255, 255, 255, 0.05); color: var(--text); font-size: 14px; outline: none; }
+  input[type=search]:focus { border-color: var(--accent); }
+  .qrow { display: flex; gap: 6px; align-items: center; }
+  .qrow .fchip { padding: 7px 11px; font-size: 13px; }
+  #countries { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+
+  /* search view: filter rows and result cards */
+  .sf { margin: 0 0 10px; }
+  .sf .row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 4px 0; }
+  .sf .lbl { width: 70px; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
+  .sf select { background: var(--chip); color: var(--text); border: 1px solid var(--line); border-radius: 7px; font-size: 12px; padding: 2px 6px; }
+  .sf label { font-size: 12px; color: var(--muted); display: inline-flex; gap: 4px; align-items: center; margin-left: 6px; }
+  .sf .reset { background: none; border: 0; color: var(--accent); font-size: 12px; cursor: pointer; margin-left: auto; }
+  ul.hits { list-style: none; margin: 0; padding: 0; }
+  .hit { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; margin-bottom: 6px; cursor: pointer; background: rgba(255, 255, 255, 0.03); }
+  .hit:hover { background: rgba(255, 255, 255, 0.07); }
+  .hit .head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+  .hit a.name { color: var(--text); text-decoration: none; font-weight: 600; font-size: 14px; }
+  .hit .meta { color: var(--muted); font-size: 11.5px; margin-top: 1px; }
+  .hit .orig { color: var(--muted); font-size: 12px; }
+  .hit .meta.also a { color: var(--accent); text-decoration: none; }
+  .hit .desc { color: var(--muted); font-size: 12.5px; line-height: 1.4; margin-top: 4px; display: -webkit-box;
+               -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .hit .acts { display: flex; gap: 6px; margin-top: 6px; align-items: center; }
+  .hit .acts .chips { flex: 1; }
+  .hit .acts .copy, .hit .acts .open { float: none; margin: 0; text-decoration: none; }
+  .more { width: 100%; background: var(--chip); border: 1px solid var(--line); color: var(--text); border-radius: 9px; padding: 7px; cursor: pointer; font-size: 12.5px; }
+
+  #panel { position: fixed; top: 16px; right: 16px; bottom: 16px; width: min(440px, calc(100vw - 32px));
+           display: flex; flex-direction: column; z-index: 4; transform: translateX(110%); transition: transform 0.25s ease; }
+  #panel.open { transform: none; }
+  #panel header { padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
+  #panel header .row { display: flex; justify-content: space-between; align-items: start; gap: 10px; }
+  #panel h2 { margin: 0; font-size: 19px; }
+  #panel .sub { color: var(--muted); font-size: 12.5px; margin: 2px 0 0; }
+  #close { background: none; border: 0; color: var(--muted); font-size: 22px; cursor: pointer; line-height: 1; padding: 0 2px; }
+  #close:hover { color: var(--text); }
+  #back { background: none; border: 0; padding: 0; margin-bottom: 4px; color: var(--accent); font-size: 12.5px; cursor: pointer; }
+  #back:hover { text-decoration: underline; }
+  #body { overflow-y: auto; flex: 1; padding: 10px 14px 14px; }
+
+  .intro { font-size: 13.5px; line-height: 1.5; margin: 0 0 8px; }
+  details { margin: 0 0 10px; font-size: 13px; line-height: 1.5; }
+  details summary { cursor: pointer; color: var(--accent); font-size: 12.5px; }
+  details.regions-box { margin: 16px 0 0; }
+  details.regions-box summary { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted);
+                                font-weight: 600; margin-bottom: 6px; }
+  details.regions-box summary:hover { color: var(--text); }
+  details p { margin: 8px 0; color: var(--muted); }
+  h3 { margin: 16px 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); font-weight: 600; }
+  h4 { margin: 10px 0 5px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); font-weight: 600; }
+
+  .regions { display: grid; grid-template-columns: 1fr; gap: 6px; }
+  .region { text-align: left; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line); border-radius: 10px;
+            padding: 8px 10px; color: var(--text); cursor: pointer; font: inherit; }
+  .region:hover { background: rgba(255, 255, 255, 0.07); }
+  .region b { font-size: 14px; }
+  .region .n { color: var(--muted); font-size: 11.5px; float: right; }
+  .region .k { color: var(--muted); font-size: 12.5px; margin-top: 2px; line-height: 1.4; }
+
+  .filters { display: flex; flex-wrap: wrap; gap: 5px; margin: 6px 0 6px; }
+  .filters input[type=search] { margin-bottom: 4px; }
+  .fchip { background: var(--chip); border: 1px solid transparent; color: var(--muted); border-radius: 999px; padding: 2px 9px;
+           font-size: 12px; cursor: pointer; }
+  .fchip[aria-pressed=true] { color: var(--text); border-color: var(--accent); }
+
+  ul.dishes { list-style: none; margin: 0; padding: 0; }
+  .dish { border-radius: 10px; padding: 8px 8px; cursor: pointer; }
+  .dish:hover { background: rgba(255, 255, 255, 0.04); }
+  .dish.open { background: rgba(255, 255, 255, 0.06); cursor: default; }
+  .dish .head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+  .dish .name { font-weight: 600; font-size: 14px; }
+  .dish .orig { color: var(--muted); font-size: 12px; font-weight: 400; }
+  .dish .meta { color: var(--muted); font-size: 11.5px; margin-top: 1px; }
+  .dots { color: var(--accent); font-size: 11px; letter-spacing: 1px; white-space: nowrap; }
+  .dots i { color: rgba(255, 255, 255, 0.15); font-style: normal; }
+  .badge { font-size: 10.5px; padding: 1px 6px; border-radius: 999px; margin-left: 6px; vertical-align: 1px; font-weight: 600; }
+  .badge.generated { background: rgba(242, 201, 76, 0.15); color: var(--warn); }
+  .badge.checked { background: rgba(86, 204, 242, 0.15); color: #56ccf2; }
+  .badge.reviewed { background: rgba(111, 207, 151, 0.15); color: var(--ok); }
+  .dbody { display: none; margin-top: 6px; font-size: 13px; line-height: 1.45; }
+  .dish.open .dbody { display: block; }
+  .dbody .desc { color: var(--muted); }
+  .copy { float: right; margin: 0 0 4px 8px; background: var(--chip); border: 1px solid var(--line); color: var(--muted);
+          border-radius: 7px; padding: 2px 8px; font-size: 11.5px; cursor: pointer; }
+  .copy:hover { color: var(--text); border-color: var(--accent); }
+  .dbody .note { color: var(--muted); font-size: 12px; font-style: italic; margin-top: 6px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+  .chip { background: var(--chip); padding: 2px 8px; border-radius: 999px; font-size: 12px; }
+  .chip.req { background: rgba(111, 207, 151, 0.13); }
+  .recipe { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .recipe .facts { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--muted); font-size: 12px; align-items: center; }
+  .servings { display: inline-flex; align-items: center; gap: 6px; }
+  .servings button { background: var(--chip); border: 1px solid var(--line); color: var(--text); border-radius: 6px;
+                     width: 22px; height: 22px; cursor: pointer; line-height: 1; }
+  .recipe ul.ing { list-style: none; margin: 4px 0 0; padding: 0; }
+  .recipe ul.ing li { padding: 2px 0; display: flex; gap: 8px; }
+  .recipe ul.ing .amt { min-width: 70px; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .recipe ul.ing .opt { color: var(--muted); font-size: 11.5px; }
+  .recipe ol { margin: 4px 0 0; padding-left: 20px; }
+  .recipe ol li { margin: 4px 0; }
+  .recipe .group { font-size: 12px; font-weight: 600; margin-top: 8px; }
+  .chip.no { background: rgba(235, 87, 87, 0.13); text-decoration: line-through; text-decoration-color: rgba(235, 87, 87, 0.7); }
+  .empty { color: var(--muted); font-size: 13px; padding: 12px 4px; }
+  /* stacked strokes, widest first: each path draws its stroke once, so the overlaps add up to a
+     shimmer that is strongest on the border (no blur filter, not every browser renders one here) */
+  #glow { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+  #glow path { fill: none; stroke: rgb(235, 45, 45); stroke-opacity: 0.07; stroke-linejoin: round; stroke-linecap: round; }
+  #glow path:nth-child(1) { stroke-width: 34px; }
+  #glow path:nth-child(2) { stroke-width: 24px; }
+  #glow path:nth-child(3) { stroke-width: 16px; }
+  #glow path:nth-child(4) { stroke-width: 10px; }
+  #glow path:nth-child(5) { stroke-width: 5px; }
+  #glow path:nth-child(6) { stroke-width: 2px; stroke-opacity: 0.22; }
+  .spot { pointer-events: none; border-radius: 50%;
+          background: radial-gradient(closest-side, rgba(235, 45, 45, 0.7), rgba(235, 45, 45, 0.35) 55%, rgba(235, 45, 45, 0)); }
+  #status { position: fixed; left: 16px; bottom: 14px; font-size: 11.5px; color: var(--muted); z-index: 2; }
+  #status a { color: inherit; }
+
+  @media (max-width: 700px) {
+    #panel { top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; height: 66vh; transform: translateY(110%); }
+    #panel.open { transform: none; }
+    #top { padding: 10px 12px; }
+    #top p { display: none; }
+  }
+</style>
+</head>
+<body>
+<div id="globe"></div>
+<svg id="glow" aria-hidden="true" style="display:none"><path/><path/><path/><path/><path/><path/></svg>
+
+<div id="top" class="card">
+  <h1>GourmetLM <span>Globus</span></h1>
+  <p>Land anklicken, Regionen entdecken, Gericht aussuchen. Oder suchen: nach Gericht, Zutat, Region, „leicht“, „ohne Fleisch“ …</p>
+  <div class="qrow"><input id="q" type="search" autocomplete="off" placeholder="z. B. Reis Ei schnell">
+    <button id="fbtn" class="fchip" title="Suche mit Filtern öffnen">Filter</button></div>
+  <div id="countries"></div>
+</div>
+
+<aside id="panel" class="card" aria-live="polite">
+  <header>
+    <button id="back" hidden></button>
+    <div class="row">
+      <div><h2 id="title"></h2><div class="sub" id="sub"></div></div>
+      <button id="close" aria-label="Schließen">×</button>
+    </div>
+  </header>
+  <div id="body"></div>
+</aside>
+
+<div id="status">Lädt …</div>
+
+<script src="vendor/globe.gl.min.js"></script>
+<script>
+const DATA = "data/";
+const COURSES = { starter: "Vorspeise", soup: "Suppe", salad: "Salat", main: "Hauptgericht", side: "Beilage",
+  dessert: "Dessert", baking: "Gebäck", snack: "Snack", breakfast: "Frühstück", sauce: "Sauce", drink: "Getränk" };
+const OCCASIONS = { everyday: "Alltag", festive: "Festtag", street_food: "Streetfood" };
+const SEASONS = { spring: "Frühling", summer: "Sommer", autumn: "Herbst", winter: "Winter" };
+const STATUS = { generated: "generiert", checked: "abgeglichen", reviewed: "geprüft" };
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fold = (s) => String(s || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+let index = null, byCountry = {}, cache = {};
+let country = null, region = null, openDish = null, course = null, filterText = "";
+let regionsOpen = false;  // region list in the country view, collapsed by default
+let deployed = null;  // commit the Pi serves (version.json), quoted when copying a dish
+// where the page runs, from site.json: "admin" (/admin/globe/, no site.json there) or "public"
+// (/recipe-globe/, written by the publish workflow together with the footer links)
+let site = { mode: "admin", links: [] };
+
+const COUNTRIES = "vendor/ne_50m_admin_0_countries.geojson";
+const HAS_DATA = "#f2a541", NO_DATA = "rgba(120, 130, 150, 0.35)";
+// with a country open: it lights up, the other countries with data step back in the same hue
+const SELECTED = "#f6e3b8", SELECTED_EDGE = "#f2a541", HAS_DATA_DIM = "#6e4c1c";
+let hovered = null, selected = null, shapes = null;
+
+let countryShapes = [];
+
+const ccOf = (f) => String(f.properties.ISO_A2_EH || f.properties.ISO_A2 || "").toLowerCase();
+
+// the region of what is selected (a region, or an open dish from a region) as one red spot that
+// fades out towards its edge; the centre and radius are only accurate to 10-50 km
+// (see raw/geo/regions.json), so a soft spot fits better than a sharp outline
+function activeRegion() {
+  if (!country) return null;
+  const id = region?.id || country.dishes.find((d) => d.id === openDish)?.region_id;
+  return country.regions.find((r) => r.id === id && r.lat != null) || null;
+}
+const spot = document.createElement("div");
+spot.className = "spot";
+const SPOT_ALT = 0.033;  // just above the selected country
+function showRegion() {
+  const r = activeRegion();
+  globe.htmlElementsData(r ? [r] : []);
+  sizeSpot();
+  showBorderGlow();
+}
+
+// an open country-wide dish: a red shimmer along the country's border instead of a spot. The
+// border is projected to the screen and drawn blurred in an SVG overlay, so it is strongest at
+// the border and fades with the distance; it is redrawn whenever the camera moves
+function countrywide() {
+  const d = !region && country && country.dishes.find((x) => x.id === openDish);
+  return !!d && !d.region_id;
+}
+function showBorderGlow() {
+  const on = countrywide() && selected;
+  $("glow").style.display = on ? "" : "none";
+  if (!on) return;
+  const g = selected.geometry, polys = g.type === "Polygon" ? [g.coordinates] : g.coordinates;
+  const d = polys.map((p) => "M" + p[0].map(([lng, lat]) => {
+    const s = globe.getScreenCoords(lat, lng, SPOT_ALT);
+    return `${s.x.toFixed(1)},${s.y.toFixed(1)}`;
+  }).join("L") + "Z").join("");
+  $("glow").querySelectorAll("path").forEach((p) => p.setAttribute("d", d));
+}
+// the spot is flat HTML, so its size follows the zoom: twice the region's radius in pixels, and
+// the gradient fades out from there
+function sizeSpot() {
+  const r = activeRegion();
+  if (!r) return;
+  const a = globe.getScreenCoords(r.lat, r.lon, SPOT_ALT), b = globe.getScreenCoords(r.lat + r.radius_km / 111, r.lon, SPOT_ALT);
+  const d = Math.round(Math.hypot(a.x - b.x, a.y - b.y) * 2.6);
+  spot.style.width = spot.style.height = `${d}px`;
+}
+
+function capColor(f) {
+  if (f === hovered) return "#ffffff";
+  if (f === selected) return SELECTED;
+  return byCountry[ccOf(f)] ? (selected ? HAS_DATA_DIM : HAS_DATA) : NO_DATA;
+}
+const label = (html) => `<div style="font:13px system-ui;padding:6px 8px;background:#10141e;border:1px solid #333;border-radius:8px;color:#e9ecf2;max-width:280px">${html}</div>`;
+
+const globe = Globe()($("globe"))
+  .backgroundColor("#05070d")
+  .showGraticules(true)
+  .atmosphereColor("#7fa7ff").atmosphereAltitude(0.12)
+  .polygonCapColor(capColor)
+  .polygonSideColor(() => "rgba(0, 0, 0, 0.35)")
+  .polygonStrokeColor((f) => (f === selected ? SELECTED_EDGE : "#0b0f18"))
+  .polygonAltitude((f) => (f === selected ? 0.03 : 0.008))
+  .polygonsTransitionDuration(0)
+  .htmlElement(() => spot)
+  .htmlLat("lat").htmlLng("lon").htmlAltitude(SPOT_ALT)
+  .htmlTransitionDuration(0)
+  .onZoom(() => { sizeSpot(); showBorderGlow(); })
+  .polygonLabel((f) => {
+    const c = byCountry[ccOf(f)];
+    const name = c ? c.name : f.properties.NAME_DE || f.properties.ADMIN;
+    return label(`<b>${esc(name)}</b>${c ? ` · ${c.regions} Regionen · ${c.dishes} Gerichte<br><span style="color:#9aa3b5">${esc(c.top.join(", "))}</span>`
+      : `<br><span style="color:#9aa3b5">noch keine Daten</span>`}`);
+  })
+  // hover only recolours; changing altitudes would rebuild the geometry of every shape
+  .onPolygonHover((f) => {
+    const h = f && byCountry[ccOf(f)] && f !== selected ? f : null;
+    if (h === hovered) return;
+    hovered = h;
+    $("globe").style.cursor = h ? "pointer" : "grab";
+    globe.polygonCapColor(capColor);
+  })
+  .onPolygonClick((f) => { if (byCountry[ccOf(f)]) { fromSearch = false; openCountry(ccOf(f)); } });
+
+function showShapes() {
+  // re-read the colours too: the polygons stay the same objects, only `selected` changed
+  globe.polygonsData(countryShapes).polygonCapColor(capColor).polygonStrokeColor(globe.polygonStrokeColor());
+  showRegion();
+}
+globe.globeMaterial().color.set("#13233d");
+globe.renderer().setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+
+function resize() { globe.width(innerWidth).height(innerHeight); }
+addEventListener("resize", resize); resize();
+
+async function getJSON(path) {
+  const res = await fetch(DATA + path);
+  if (!res.ok) throw new Error(`${path}: ${res.status}`);
+  return res.json();
+}
+
+// camera over a country's largest polygon, close enough to see its regions; shifted east so
+// the country is not hidden behind the panel on wide screens
+function countryView(f) {
+  const g = f.geometry, polys = g.type === "Polygon" ? [g.coordinates] : g.coordinates;
+  const ring = polys.map((p) => p[0]).sort((a, b) => b.length - a.length)[0];
+  const xs = ring.map((p) => p[0]), ys = ring.map((p) => p[1]);
+  const span = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+  const lng = xs.reduce((a, b) => a + b, 0) / xs.length, lat = ys.reduce((a, b) => a + b, 0) / ys.length;
+  return { lat, lng: lng + (innerWidth > 700 ? span * 0.35 : 0), altitude: Math.min(Math.max(span / 16, 0.45), 1.6) };
+}
+
+async function init() {
+  try { index = await getJSON("index.json"); } catch (e) {
+    $("status").textContent = "Keine Daten gefunden. Erst exportieren: python -m gourmetlm.content globe";
+    return;
+  }
+  index.countries.forEach((c) => { byCountry[c.id] = c; });
+  $("countries").innerHTML = index.countries.map((c) =>
+    `<button class="fchip" data-cc="${c.id}">${esc(c.name)}</button>`).join("");
+  $("countries").addEventListener("click", (ev) => { const b = ev.target.closest("[data-cc]"); if (b) { fromSearch = false; openCountry(b.dataset.cc); } });
+  shapes = await fetch(COUNTRIES).then((r) => r.json()).catch(() => null);
+  if (shapes) {
+    countryShapes = shapes.features.filter((f) => f.properties.ISO_A2 !== "AQ");
+    showShapes();
+  }
+  globe.pointOfView({ lat: 40, lng: 40, altitude: 2.3 }, 0);
+  globe.controls().autoRotate = true;
+  globe.controls().autoRotateSpeed = 0.35;
+  $("status").textContent = (shapes ? "" : "Ländergrenzen konnten nicht geladen werden · ")
+    + `${index.countries.length} Länder · ${index.search.length} Gerichte · Inhalte KI-generiert`
+    + (site.mode === "public" ? ", ohne Gewähr" : "");
+  // admin: written by the Pi after each deploy (pi_infra, webhook_listener.py), with the commit;
+  // public: written by the publish workflow, date only (the repo is private, a link would be a 404).
+  // Missing when run locally
+  const v = await fetch("version.json", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  if (v?.commit && site.mode === "admin") {
+    deployed = v.commit.slice(0, 7);
+    const when = new Date(v.deployed_at || v.committed_at).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" });
+    $("status").insertAdjacentHTML("beforeend", ` · Stand <a href="https://github.com/vinzenz-san/gourmetlm/commit/${esc(v.commit)}"
+      target="_blank" rel="noopener" title="online seit ${esc(when)}">${esc(v.commit.slice(0, 7))}</a>`);
+  } else if (v?.committed_at) {
+    const day = new Date(v.committed_at).toLocaleDateString("de-DE", { dateStyle: "medium" });
+    $("status").insertAdjacentHTML("beforeend", ` · Stand ${esc(day)}`);
+  }
+  // only paths on this site: site.json is ours, but a typo must not turn into a link elsewhere
+  site.links.filter((l) => /^\/(?!\/)/.test(l.href || "")).forEach((l) => {
+    $("status").insertAdjacentHTML("beforeend", ` · <a href="${esc(l.href)}">${esc(l.text)}</a>`);
+  });
+}
+
+async function loadSite() {
+  const s = await fetch("site.json", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  if (s?.mode === "public") site = { mode: "public", links: Array.isArray(s.links) ? s.links : [] };
+  document.body.dataset.mode = site.mode;
+}
+
+async function openCountry(cc, regionId = null, dishId = null) {
+  globe.controls().autoRotate = false;
+  inSearch = false;
+  selected = countryShapes.find((f) => ccOf(f) === cc) || null;
+  if (selected) {
+    globe.pointOfView(countryView(selected), 900);
+    // onZoom only follows the user's camera moves, not this animation
+    setTimeout(() => { sizeSpot(); showBorderGlow(); }, 950);
+  }
+  country = cache[cc] ||= await getJSON(`countries/${cc}.json`);
+  region = regionId ? country.regions.find((r) => r.id === regionId) : null;
+  openDish = dishId; course = null; filterText = ""; hovered = null;
+  showShapes();
+  $("panel").classList.add("open");
+  render();
+  if (dishId) document.querySelector(`[data-id="${dishId}"]`)?.scrollIntoView({ block: "center" });
+  else $("body").scrollTop = 0;
+}
+
+const regionName = (id) => country.regions.find((r) => r.id === id)?.name;
+// also_in holds region ids and ISO country codes; the own country code means "common everywhere"
+const COUNTRY_NAMES = (() => { try { return new Intl.DisplayNames(["de"], { type: "region" }); } catch (e) { return null; } })();
+const placeName = (id) => regionName(id)
+  || (id === country.id ? `ganz ${country.name}` : (/^[a-z]{2}$/.test(id) && COUNTRY_NAMES?.of(id.toUpperCase())) || id);
+// dishes of a region: those from there, and those also found there
+const inRegion = (d, id) => d.region_id === id || (d.also_in || []).includes(id);
+const chips = (xs, cls = "") => `<div class="chips">${xs.map((x) => `<span class="chip ${cls}">${esc(x)}</span>`).join("")}</div>`;
+const dots = (n) => `<span class="dots" title="Typisch für das Land: ${n} von 5">${"●".repeat(n)}<i>${"●".repeat(5 - n)}</i></span>`;
+
+// title and second line of a dish: outside Germany the original name leads ("Kare Raisu"), the
+// German one follows with the native script ("Japanisches Curry mit Reis · カレーライス")
+function names(name, nameDe, native, cc) {
+  const title = cc === "de" ? nameDe : name, other = cc === "de" ? name : nameDe;
+  return [title, [fold(other) !== fold(title) ? other : null, native]];
+}
+function dishHTML(d) {
+  const [title, sub] = names(d.name, d.name_de, d.name_native, d.country_id);
+  const orig = [...sub, ...(d.aliases || [])].filter(Boolean).join(" · ");
+  const meta = [d.courses.map((c) => COURSES[c]).join(" / "), ...d.occasions.filter((o) => o !== "everyday").map((o) => OCCASIONS[o]), SEASONS[d.season],
+    !region ? (d.region_id ? regionName(d.region_id) : "landesweit") : null].filter(Boolean).join(" · ");
+  const also = (d.also_in || []).filter((id) => id !== region?.id).map(placeName);
+  const home = region && d.region_id !== region.id ? (d.region_id ? regionName(d.region_id) : "landesweit") : null;
+  return `<li class="dish${openDish === d.id ? " open" : ""}" data-id="${d.id}">
+    <div class="head"><div class="name">${esc(title)}<span class="badge ${d.status}">${STATUS[d.status] || d.status}</span>
+      ${orig ? ` <span class="orig">${esc(orig)}</span>` : ""}</div>${dots(d.typicality)}</div>
+    <div class="meta">${esc(meta)}${d.recipe ? " · mit Rezept" : ""}</div>
+    <div class="dbody"><button class="copy" data-copy title="Gericht und Rezept als Text in die Zwischenablage">Kopieren</button>
+      <div class="desc">${esc(d.description)}</div>
+      ${d.required?.length ? `<h4>Muss rein</h4>${chips(d.required, "req")}` : ""}
+      ${d.forbidden?.length ? `<h4>Gehört nicht rein</h4>${chips(d.forbidden, "no")}` : ""}
+      ${home ? `<h4>Stammt aus</h4>${chips([home])}` : ""}
+      ${also.length ? `<h4>Auch verbreitet in</h4>${chips(also)}` : ""}
+      ${d.note ? `<div class="note">${esc(d.note.replace(/^UNSURE:\s*/, "Unsicher: "))}</div>` : ""}
+      ${d.recipe ? recipeHTML(d.recipe) : ""}
+    </div></li>`;
+}
+
+// --- recipe, scaled to the chosen number of servings ---------------------------
+const UNITS = { g: "g", kg: "kg", ml: "ml", l: "l", piece: "", pinch: "Prise", tbsp: "EL", tsp: "TL", clove: "Zehe", bunch: "Bund" };
+const PLURAL = { pinch: "Prisen", clove: "Zehen" };
+const servingsFor = {};  // dish id -> servings chosen by the viewer
+// "500 g Mehl (Type 405)" -> "Mehl (Type 405)": the amount is shown separately, scaled
+const LEAD = /^\s*(?:ca\.\s*)?(?:\d+(?:[.,]\d+)?|[½¼¾⅓⅔])(?:\s*[-–]\s*\d+(?:[.,]\d+)?)?\s*(?:(?:g|kg|ml|l|EL|TL|Prisen?|Zehen?|Bund|Stück|Stk\.?|tsp|tbsp|pinch|piece|clove|bunch)(?![\wäöü]))?\s*/i;
+function fmtAmount(x, unit) {
+  if (unit === "g" && x >= 1000) return fmtAmount(x / 1000, "kg");
+  if (unit === "ml" && x >= 1000) return fmtAmount(x / 1000, "l");
+  const fr = { 0.25: "¼", 0.5: "½", 0.75: "¾" };
+  const whole = Math.floor(x + 1e-9), rest = Math.round((x - whole) * 4) / 4;
+  let n;
+  if (["g", "ml"].includes(unit)) n = String(x >= 100 ? Math.round(x / 5) * 5 : Math.round(x));
+  else if (["kg", "l"].includes(unit)) n = String(Math.round(x * 100) / 100).replace(".", ",");
+  else if (unit === "piece" && x >= 3) n = String(Math.round(x));  // "8 Pimentkörner", not "7½"
+  else n = rest && fr[rest] ? `${whole || ""}${fr[rest]}` : String(Math.round(x * 4) / 4).replace(".", ",");
+  const label = x > 1 && PLURAL[unit] ? PLURAL[unit] : UNITS[unit];
+  return label ? `${n} ${label}` : n;
+}
+// amount of one ingredient line for `f` times the recipe's servings, and its text without the amount
+function ingredientParts(i, f) {
+  const q = i.quantity;
+  const amt = q ? fmtAmount(q.amount * f, q.unit) + (q.amount_max ? `–${fmtAmount(q.amount_max * f, q.unit)}` : "") : "";
+  return [amt, q ? i.text.replace(LEAD, "") : i.text];
+}
+const DIETS = { vegetarian: "vegetarisch", vegan: "vegan", "gluten-free": "glutenfrei", "lactose-free": "laktosefrei" };
+
+// the whole dish as plain text, at the servings shown, for pasting into a chat or a review
+function dishText(d, c = country) {
+  const [title, sub] = names(d.name, d.name_de, d.name_native, d.country_id);
+  const out = [title + (sub.some(Boolean) ? ` (${sub.filter(Boolean).join(", ")})` : ""), d.description,
+    [c.name, d.region_id ? c.regions.find((r) => r.id === d.region_id)?.name : "landesweit", d.courses.map((c) => COURSES[c]).join(" / ")].join(" · ")];
+  if (d.required?.length) out.push(`Muss rein: ${d.required.join(", ")}`);
+  if (d.forbidden?.length) out.push(`Gehört nicht rein: ${d.forbidden.join(", ")}`);
+  const r = d.recipe;
+  if (r) {
+    const n = servingsFor[r.dish_id] || r.servings, f = n / r.servings;
+    out.push("", [`Rezept für ${n} Portionen`, r.total_time_min ? `${r.active_time_min ? r.active_time_min + " min aktiv, " : ""}${r.total_time_min} min gesamt` : "",
+      r.difficulty ? ["", "einfach", "mittel", "anspruchsvoll"][r.difficulty] : "", (r.diet || []).map((x) => DIETS[x] || x).join(", ")].filter(Boolean).join(" · "));
+    out.push("", "Zutaten:");
+    let group = null;
+    r.ingredients.forEach((i) => {
+      if ((i.group || "") !== group) { group = i.group || ""; if (group) out.push(`${group}:`); }
+      const [amt, text] = ingredientParts(i, f);
+      out.push(`- ${amt ? amt + " " : ""}${text}${i.optional ? " (optional)" : ""}`);
+    });
+    out.push("", "Zubereitung:", ...r.steps.map((s, k) => `${k + 1}. ${s}`));
+    if (r.equipment?.length) out.push("", `Geräte: ${r.equipment.join(", ")}`);
+    if (r.serve_with?.length) out.push(`Dazu: ${r.serve_with.join(", ")}`);
+    if (r.substitutions?.length) out.push("", "Ersatz:", ...r.substitutions.map((s) => `- ${s}`));
+    if (r.notes) out.push("", `Hinweis: ${r.notes}`);
+  }
+  out.push("", `[${d.id} · Gericht ${STATUS[d.status] || d.status}${r ? ` · Rezept ${STATUS[r.status] || r.status}` : ""}${deployed ? ` · Stand ${deployed}` : ""}]`);
+  return out.join("\n");
+}
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch (e) {
+    const ta = Object.assign(document.createElement("textarea"), { value: text });  // no clipboard API (http, old browser)
+    ta.style.cssText = "position:fixed;opacity:0"; document.body.append(ta); ta.select();
+    const ok = document.execCommand("copy"); ta.remove(); return ok;
+  }
+}
+
+function recipeHTML(r) {
+  const n = servingsFor[r.dish_id] || r.servings, f = n / r.servings;
+  const groups = [];
+  r.ingredients.forEach((i) => {
+    const g = groups.find((x) => x.name === (i.group || "")) || (groups.push({ name: i.group || "", items: [] }), groups[groups.length - 1]);
+    g.items.push(i);
+  });
+  const line = (i) => {
+    const [amt, text] = ingredientParts(i, f);
+    return `<li><span class="amt">${esc(amt)}</span><span>${esc(text)}${i.optional ? ' <span class="opt">(optional)</span>' : ""}</span></li>`;
+  };
+  const time = r.total_time_min ? `${r.active_time_min ? r.active_time_min + " min aktiv, " : ""}${r.total_time_min} min gesamt` : "";
+  const diff = r.difficulty ? ["", "einfach", "mittel", "anspruchsvoll"][r.difficulty] : "";
+  return `<div class="recipe"><h4>Rezept <span class="badge ${r.status}">${STATUS[r.status] || r.status}</span></h4>
+    <div class="facts"><span class="servings"><button data-serv="-1" aria-label="weniger">−</button><b>${n}</b> Portionen<button data-serv="1" aria-label="mehr">+</button></span>
+      ${time ? `<span>${time}</span>` : ""}${diff ? `<span>${diff}</span>` : ""}
+      ${r.diet?.length ? `<span>${esc(r.diet.map((x) => DIETS[x] || x).join(", "))}</span>` : ""}</div>
+    <h4>Zutaten</h4>${groups.map((g) => `${g.name ? `<div class="group">${esc(g.name)}</div>` : ""}<ul class="ing">${g.items.map(line).join("")}</ul>`).join("")}
+    <h4>Zubereitung</h4><ol>${r.steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>
+    ${r.equipment?.length ? `<h4>Geräte</h4>${chips(r.equipment)}` : ""}
+    ${r.serve_with?.length ? `<h4>Dazu</h4>${chips(r.serve_with)}` : ""}
+    ${r.substitutions?.length ? `<h4>Ersatz</h4><ul class="ing">${r.substitutions.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+    ${r.notes ? `<div class="note">${esc(r.notes)}</div>` : ""}</div>`;
+}
+
+function dishList(list) {
+  const q = fold(filterText);
+  const courses = [...new Set(list.flatMap((d) => d.courses))].sort((a, b) => Object.keys(COURSES).indexOf(a) - Object.keys(COURSES).indexOf(b));
+  const shown = list.filter((d) => (!course || d.courses.includes(course))
+    && (!q || [d.name_de, d.name, d.description, ...(d.aliases || [])].some((x) => fold(x).includes(q))));
+  return `<div class="filters"><input id="filter" type="search" autocomplete="off" placeholder="Gerichte filtern" value="${esc(filterText)}">
+      <button class="fchip" data-course="" aria-pressed="${!course}">alle ${list.length}</button>
+      ${courses.map((c) => `<button class="fchip" data-course="${c}" aria-pressed="${course === c}">${COURSES[c]}</button>`).join("")}</div>
+    <ul class="dishes">${shown.map(dishHTML).join("") || `<li class="empty">Keine Gerichte gefunden.</li>`}</ul>`;
+}
+
+function render() {
+  const c = country;
+  $("back").hidden = !region && !fromSearch;
+  $("back").textContent = region ? `← ${c.name}` : "← Suche";
+  if (region) {
+    const list = c.dishes.filter((d) => inRegion(d, region.id));
+    $("title").textContent = region.name;
+    $("sub").textContent = `${region.name_local !== region.name ? region.name_local + " · " : ""}${c.name} · ${list.length} Gerichte`;
+    $("body").innerHTML = `<p class="intro">${esc(region.known_for)}</p>
+      ${region.profile ? `<details><summary>Mehr über die Küche der Region</summary>${region.profile.split(/\n+/).map((p) => `<p>${esc(p)}</p>`).join("")}</details>` : ""}
+      ${region.key_ingredients?.length ? `<h3>Prägende Zutaten</h3>${chips(region.key_ingredients)}` : ""}
+      <h3>Gerichte</h3><div id="list">${dishList(list)}</div>`;
+  } else {
+    $("title").textContent = c.name;
+    $("sub").textContent = `${c.regions.length} Regionen · ${c.dishes.length} Gerichte`;
+    $("body").innerHTML = `<p class="intro">${esc(c.intro)}</p>
+      <details><summary>Mehr über die Küche</summary>${c.profile.split(/\n+/).map((p) => `<p>${esc(p)}</p>`).join("")}
+        ${c.meal_habits ? `<h4>Wie gegessen wird</h4><p>${esc(c.meal_habits)}</p>` : ""}
+        ${c.techniques?.length ? `<h4>Techniken</h4>${chips(c.techniques)}` : ""}</details>
+      ${c.key_ingredients?.length ? `<h3>Prägende Zutaten</h3>${chips(c.key_ingredients)}` : ""}
+      <details class="regions-box"${regionsOpen ? " open" : ""}><summary>Regionen (${c.regions.length})</summary>
+        <div class="regions">${c.regions.map((r) => `<button class="region" data-region="${r.id}">
+        <span class="n">${c.dishes.filter((d) => inRegion(d, r.id)).length} Gerichte</span><b>${esc(r.name)}</b>
+        <div class="k">${esc(r.known_for)}</div></button>`).join("")}</div></details>
+      <h3>Alle Gerichte</h3><div id="list">${dishList(c.dishes)}</div>`;
+  }
+}
+
+// typing: keep the cursor in the filter box, which is re-rendered with the list
+function renderList(typing = false) {
+  const list = region ? country.dishes.filter((d) => inRegion(d, region.id)) : country.dishes;
+  const pos = $("filter")?.selectionStart;
+  $("list").innerHTML = dishList(list);
+  showRegion();
+  if (typing) { const f = $("filter"); f.focus(); f.setSelectionRange(pos, pos); }
+}
+
+$("body").addEventListener("click", (ev) => {
+  if (searchClick(ev)) return;
+  const r = ev.target.closest("[data-region]");
+  if (r) { selectRegion(r.dataset.region); return; }
+  const c = ev.target.closest("[data-course]");
+  if (c) { course = c.dataset.course || null; renderList(); return; }
+  const li = ev.target.closest(".dish");
+  const cp = ev.target.closest("[data-copy]");
+  if (cp && li) {
+    copyText(dishText(country.dishes.find((d) => d.id === li.dataset.id))).then((ok) => {
+      cp.textContent = ok ? "Kopiert ✓" : "Kopieren fehlgeschlagen";
+      setTimeout(() => { cp.textContent = "Kopieren"; }, 1500);
+    });
+    return;
+  }
+  const sv = ev.target.closest("[data-serv]");
+  if (sv && li) {
+    const r = country.dishes.find((d) => d.id === li.dataset.id).recipe;
+    servingsFor[r.dish_id] = Math.min(Math.max((servingsFor[r.dish_id] || r.servings) + +sv.dataset.serv, 1), 24);
+    renderList(); return;
+  }
+  if (li && li.classList.contains("open") && ev.target.closest(".dbody")) return;  // reading, not closing
+  if (li) {
+    openDish = openDish === li.dataset.id ? null : li.dataset.id; renderList();
+    history.replaceState(null, "", openDish ? `#d=${openDish}` : location.pathname + location.search);  // direct link, no hashchange
+  }
+});
+$("body").addEventListener("input", (ev) => { if (ev.target.id === "filter") { filterText = ev.target.value; renderList(true); } });
+// id null: back to the whole country
+function selectRegion(id) {
+  region = id ? country.regions.find((x) => x.id === id) : null;
+  openDish = null; course = null; filterText = "";
+  render(); $("body").scrollTop = 0;
+  showRegion();
+}
+$("back").addEventListener("click", () => {
+  if (region) selectRegion(null);
+  else if (fromSearch) { fromSearch = false; history.replaceState(null, "", location.pathname + location.search); showSearch(false); }
+});
+// "toggle" does not bubble, so listen in the capture phase
+$("body").addEventListener("toggle", (ev) => { if (ev.target.classList.contains("regions-box")) regionsOpen = ev.target.open; }, true);
+$("close").addEventListener("click", () => {
+  $("panel").classList.remove("open"); globe.controls().autoRotate = true;
+  selected = null; region = null; openDish = null; inSearch = false; fromSearch = false; showShapes();
+  history.replaceState(null, "", location.pathname + location.search);
+});
+
+// --- search: static index (data/search.json), filtered and ranked in the browser ------------
+// Words in the query each have to match something: a dish name, an ingredient (with its
+// parents, "Fisch" finds trout), a place, a keyword ("vegetarisch", "schnell", "leicht"), or the
+// description. "ohne X" excludes. No model runs here; the soft tags were set once per dish.
+const sfold = (s) => fold(s).replace(/ß/g, "ss").replace(/[\s\-_]+/g, " ").trim();  // as normalize.fold
+let finder = null;
+const sq = { course: null, diet: new Set(), time: null, easy: false, tags: new Set(), occ: null, season: null, cc: null, sort: "best", mix: true };
+let shownN = 24, fromSearch = false, inSearch = false;
+const has = (xs, x) => (xs || []).includes(x);
+const TAGS = { leicht: "leicht", deftig: "deftig", scharf: "scharf", "wärmend": "wärmend", erfrischend: "erfrischend" };
+const KEYWORDS = {
+  vegetarisch: (e) => has(e.diet, "vegetarian") || has(e.diet, "vegan"), vegan: (e) => has(e.diet, "vegan"),
+  glutenfrei: (e) => has(e.diet, "gluten-free"), laktosefrei: (e) => has(e.diet, "lactose-free"),
+  schnell: (e) => e.tt && e.tt <= 30, einfach: (e) => e.df === 1,
+  festlich: (e) => has(e.oc, "festive"), streetfood: (e) => has(e.oc, "street_food"),
+  fruhling: (e) => e.s === "spring", sommer: (e) => e.s === "summer", herbst: (e) => e.s === "autumn", winter: (e) => e.s === "winter",
+  vorspeise: (e) => has(e.c, "starter"), suppe: (e) => has(e.c, "soup"), salat: (e) => has(e.c, "salad"), hauptgericht: (e) => has(e.c, "main"),
+  beilage: (e) => has(e.c, "side"), dessert: (e) => has(e.c, "dessert"), nachtisch: (e) => has(e.c, "dessert"), geback: (e) => has(e.c, "baking"),
+  kuchen: (e) => has(e.c, "baking"), snack: (e) => has(e.c, "snack"), fruhstuck: (e) => has(e.c, "breakfast"), getrank: (e) => has(e.c, "drink"),
+  ...Object.fromEntries(Object.keys(TAGS).map((t) => [sfold(t), (e) => has(e.g, t)])),
+};
+const STOP = new Set("mit und oder aus in im am der die das den dem ein eine einen etwas was ich habe hab noch fur zum zur von gerichte gericht rezept rezepte essen".split(" "));
+
+async function loadFinder() {
+  if (finder) return finder;
+  finder = await getJSON("search.json");
+  finder.dishes.forEach((e) => {
+    e.text = sfold([e.n, e.o, ...e.a].join(" ")); e.desc = sfold(e.d); e.ing = new Set(e.i);
+    e.place = sfold(`${finder.places[e.cc]} ${finder.places[e.r] || ""}`);
+  });
+  return finder;
+}
+// ingredient ids a word stands for: the alias itself, else its singular/plural, else (5+ letters) the start of an alias
+const ingMemo = {};
+function ingIds(t) {
+  if (t in ingMemo) return ingMemo[t];
+  const A = finder.aliases, out = new Set();
+  // short words only as they are or with a German plural ("ei" -> "eier", not "eis" = ice)
+  const forms = t.length < 4 ? [t, t + "er", t + "ern"] : [t, t.replace(/(en|er|es|n|e|s)$/, ""), t + "n", t + "en", t + "e", t + "s"];
+  forms.forEach((f) => { if (A[f]) out.add(A[f]); });
+  if (!out.size && t.length >= 5) Object.keys(A).forEach((a) => { if (a.startsWith(t)) out.add(A[a]); });
+  return (ingMemo[t] = out);
+}
+// one word against one dish: its weight, 0 for no match
+function wordScore(t, e) {
+  const words = e.text.split(" ");
+  const name = t.length < 4 ? words.some((w) => w === t || w === t + "er" || w === t + "ern")  // "ei", not "Eisentopf"
+    : words.some((w) => w.startsWith(t)) || (t.length >= 5 && e.text.includes(t));
+  // a keyword means its filter ("suppe" = the course, not soup stock as an ingredient)
+  if (KEYWORDS[t]) return KEYWORDS[t](e) ? 2 : name ? 4 : 0;
+  if (name) return 4;
+  const ids = ingIds(t);
+  if (ids.size && [...ids].some((i) => e.ing.has(i))) return 3;
+  if (t.length >= 4 ? e.place.includes(t) : e.place.split(" ").includes(t)) return 2.5;  // "bayern" in "Altbayern"
+  // word starts only: "reis" must not match "Preiselbeeren"
+  if (t.length >= 4 && e.desc.split(" ").some((w) => w.startsWith(t))) return 1;
+  return 0;
+}
+function parseQuery(text) {
+  const words = sfold(text).split(/[\s,;]+/).filter(Boolean), want = [], not = [];
+  for (let k = 0; k < words.length; k++) {
+    let w = words[k], neg = false;
+    if (w === "ohne" && k + 1 < words.length) { neg = true; w = words[++k]; }
+    if (STOP.has(w)) continue;
+    const two = k + 1 < words.length ? `${w} ${words[k + 1]}` : null;  // "saure sahne", "rote bete"
+    if (two && finder.aliases[two]) { w = two; k++; }
+    (neg ? not : want).push(w);
+  }
+  return { want, not };
+}
+function searchHits() {
+  const { want, not } = parseQuery($("q").value);
+  const ok = (e) => (!sq.course || has(e.c, sq.course)) && [...sq.diet].every((d) => KEYWORDS[d](e))
+    && (!sq.time || (e.tt && e.tt <= sq.time)) && (!sq.easy || e.df === 1) && [...sq.tags].every((t) => has(e.g, t))
+    && (!sq.occ || has(e.oc, sq.occ)) && (!sq.season || e.s === sq.season) && (!sq.cc || e.cc === sq.cc);
+  let hits = [];
+  for (const e of finder.dishes) {
+    if (!ok(e)) continue;
+    // "ohne Fleisch": no ingredient of that kind, and not in the name
+    if (not.some((t) => { const ids = ingIds(t); return [...ids].some((i) => e.ing.has(i)) || e.text.includes(t); })) continue;
+    let score = 0, all = true;
+    for (const t of want) { const s = wordScore(t, e); if (!s) { all = false; break; } score += s; }
+    if (all) hits.push({ e, score: score + 0.4 * e.t });
+  }
+  const key = { best: (h) => -h.score, typical: (h) => -h.e.t * 10 - h.score / 10, quick: (h) => h.e.tt || 1e9 }[sq.sort];
+  hits.sort((a, b) => key(a) - key(b));
+  // variety: each further dish from the same country (and region) costs a little, so the
+  // list mixes countries without burying a much better match
+  if (sq.mix && !sq.cc && sq.sort === "best") {
+    const out = [], cc = {}, rg = {}, rest = [...hits];
+    while (rest.length && out.length < 200) {
+      let bi = 0, bv = -Infinity;
+      for (let k = 0; k < Math.min(rest.length, 60); k++) {
+        const h = rest[k], v = h.score - 0.8 * (cc[h.e.cc] || 0) - 0.5 * (rg[h.e.r] || 0);
+        if (v > bv) { bv = v; bi = k; }
+      }
+      const [h] = rest.splice(bi, 1);
+      out.push(h); cc[h.e.cc] = (cc[h.e.cc] || 0) + 1; if (h.e.r) rg[h.e.r] = (rg[h.e.r] || 0) + 1;
+    }
+    hits = out.concat(rest);
+  }
+  // one card per dish: the same dish from another country (e.x) goes behind the better hit
+  const seen = new Set();
+  return hits.filter((h) => { if (seen.has(h.e.id)) return false; (h.e.x || []).forEach((i) => seen.add(i)); return true; });
+}
+
+const fchip = (attr, val, on, text) => `<button class="fchip" data-sf="${attr}" data-v="${esc(val)}" aria-pressed="${on}">${esc(text)}</button>`;
+function filtersHTML() {
+  const row = (lbl, html) => `<div class="row"><span class="lbl">${lbl}</span>${html}</div>`;
+  return `<div class="sf">
+    ${row("Gang", Object.entries(COURSES).map(([k, v]) => fchip("course", k, sq.course === k, v)).join(""))}
+    ${row("Ernährung", ["vegetarisch", "vegan", "glutenfrei", "laktosefrei"].map((d) => fchip("diet", d, sq.diet.has(d), d)).join(""))}
+    ${row("Aufwand", fchip("time", 30, sq.time === 30, "bis 30 min") + fchip("time", 60, sq.time === 60, "bis 60 min") + fchip("easy", 1, sq.easy, "einfach"))}
+    ${row("Charakter", Object.entries(TAGS).map(([k, v]) => fchip("tag", k, sq.tags.has(k), v)).join("")
+      + fchip("occ", "festive", sq.occ === "festive", "festlich") + fchip("occ", "street_food", sq.occ === "street_food", "Streetfood"))}
+    ${row("Saison", Object.entries(SEASONS).map(([k, v]) => fchip("season", k, sq.season === k, v)).join(""))}
+    ${row("Land", index.countries.map((c) => fchip("cc", c.id, sq.cc === c.id, c.name)).join(""))}
+    <div class="row"><span class="lbl">Sortierung</span><select data-sort>
+      ${[["best", "passend"], ["typical", "typisch"], ["quick", "schnell"]].map(([k, v]) => `<option value="${k}"${sq.sort === k ? " selected" : ""}>${v}</option>`).join("")}</select>
+      <label title="Länder und Regionen mischen statt nur die besten Treffer"><input type="checkbox" data-mix${sq.mix ? " checked" : ""}> gemischt</label>
+      <button class="reset" data-reset>zurücksetzen</button></div></div>`;
+}
+function hitHTML({ e }) {
+  const [title, sub] = names(e.o, e.n, e.nn, e.cc);
+  const where = [finder.places[e.cc], e.r ? finder.places[e.r] : "landesweit", e.c.map((c) => COURSES[c]).join(" / ")];
+  // also from: the same dish in our other countries (linked), and also_in (regions, other countries)
+  const other = (e.x || []).map((id) => {
+    const o = finder.dishes.find((x) => x.id === id);
+    return `<a href="#d=${id}">${esc(finder.places[o.cc])}${o.r ? ` (${esc(finder.places[o.r])})` : ""}</a>`;
+  });
+  const also = (e.al || []).filter((id) => id !== e.cc && !(e.x || []).some((x) => x.startsWith(id + "-")))
+    .map((id) => esc(finder.places[id] || (/^[a-z]{2}$/.test(id) && COUNTRY_NAMES?.of(id.toUpperCase())) || id));
+  const facts = [e.tt ? `${e.tt} min` : "", e.df ? ["", "einfach", "mittel", "anspruchsvoll"][e.df] : "", (e.diet || []).map((x) => DIETS[x] || x).join(", ")];
+  return `<li class="hit" data-hit="${e.id}">
+    <div class="head"><div><a class="name" href="#d=${e.id}">${esc(title)}</a><span class="badge ${e.st}">${STATUS[e.st] || e.st}</span>
+      ${sub.some(Boolean) ? ` <span class="orig">${esc(sub.filter(Boolean).join(" · "))}</span>` : ""}</div>${dots(e.t)}</div>
+    <div class="meta">${esc([...where, ...facts].filter(Boolean).join(" · "))}</div>
+    ${other.length || also.length ? `<div class="meta also">auch: ${[...other, ...also].join(", ")}</div>` : ""}
+    <div class="desc">${esc(e.d)}</div>
+    <div class="acts">${e.g.length ? chips(e.g) : `<div class="chips"></div>`}
+      <a class="copy open" href="#d=${e.id}">Öffnen</a><button class="copy" data-copy title="Gericht und Rezept als Text in die Zwischenablage">Kopieren</button></div></li>`;
+}
+// no hit for all words: how many there are with one word left out, as clickable suggestions
+function relaxHTML() {
+  const words = $("q").value.split(/[\s,;]+/).filter(Boolean);
+  if (words.length < 2) return " Weniger Filter versuchen.";
+  const q = $("q").value, out = [];
+  words.forEach((w, k) => {
+    $("q").value = words.filter((_, j) => j !== k).join(" ");
+    const n = searchHits().length;
+    if (n) out.push(`<button class="fchip" data-relax="${esc($("q").value)}">ohne „${esc(w)}“: ${n}</button>`);
+  });
+  $("q").value = q;
+  return out.length ? `<div class="chips" style="margin-top:6px">${out.join("")}</div>` : " Weniger Wörter oder Filter versuchen.";
+}
+async function showSearch(reset = true) {
+  await loadFinder();
+  if (!inSearch) {
+    inSearch = true; country = null; region = null; openDish = null; selected = null;
+    showShapes(); globe.controls().autoRotate = false;
+    index.countries.forEach((c) => { if (!cache[c.id]) getJSON(`countries/${c.id}.json`).then((x) => { cache[c.id] ||= x; }); });  // for Kopieren
+  }
+  if (reset) shownN = 24;
+  const hits = searchHits();
+  $("back").hidden = true;
+  $("title").textContent = "Suche";
+  $("sub").textContent = `${hits.length} von ${finder.dishes.length} Gerichten`;
+  $("body").innerHTML = filtersHTML() + `<ul class="hits">${hits.slice(0, shownN).map(hitHTML).join("")
+    || `<li class="empty">Nichts gefunden, das zu allen Wörtern passt.${relaxHTML()}</li>`}</ul>`
+    + (hits.length > shownN ? `<button class="more" data-more>Weitere ${Math.min(24, hits.length - shownN)} anzeigen</button>` : "");
+  $("panel").classList.add("open");
+  if (reset) $("body").scrollTop = 0;
+}
+// search view clicks; returns true when handled
+function searchClick(ev) {
+  if (!inSearch) return false;
+  const f = ev.target.closest("[data-sf]");
+  if (f) {
+    const k = f.dataset.sf, v = f.dataset.v;
+    if (k === "diet") sq.diet.has(v) ? sq.diet.delete(v) : sq.diet.add(v);
+    else if (k === "tag") sq.tags.has(v) ? sq.tags.delete(v) : sq.tags.add(v);
+    else if (k === "easy") sq.easy = !sq.easy;
+    else if (k === "time") sq.time = sq.time === +v ? null : +v;
+    else sq[k] = sq[k] === v ? null : v;
+    showSearch(); return true;
+  }
+  if (ev.target.closest("[data-reset]")) {
+    Object.assign(sq, { course: null, time: null, easy: false, occ: null, season: null, cc: null, sort: "best", mix: true });
+    sq.diet.clear(); sq.tags.clear(); showSearch(); return true;
+  }
+  if (ev.target.closest("[data-more]")) { shownN += 24; showSearch(false); return true; }
+  const rx = ev.target.closest("[data-relax]");
+  if (rx) { $("q").value = rx.dataset.relax; showSearch(); return true; }
+  const hit = ev.target.closest("[data-hit]");
+  if (!hit) return !!ev.target.closest(".sf");
+  const link = ev.target.closest("a[href^='#d=']");  // "auch: Deutschland" opens that country's dish
+  const id = link && !ev.target.closest("[data-copy]") ? link.getAttribute("href").slice(3) : hit.dataset.hit, cc = id.split("-")[0];
+  const cp = ev.target.closest("[data-copy]");
+  if (cp) {
+    const c = cache[cc], d = c?.dishes.find((x) => x.id === id);
+    (d ? copyText(dishText(d, c)) : Promise.resolve(false)).then((ok) => {
+      cp.textContent = ok ? "Kopiert ✓" : "Kopieren fehlgeschlagen";
+      setTimeout(() => { cp.textContent = "Kopieren"; }, 1500);
+    });
+    return true;
+  }
+  ev.preventDefault();
+  fromSearch = true; location.hash = `d=${id}`;
+  return true;
+}
+$("body").addEventListener("change", (ev) => {
+  if (ev.target.matches("[data-sort]")) { sq.sort = ev.target.value; showSearch(); }
+  if (ev.target.matches("[data-mix]")) { sq.mix = ev.target.checked; showSearch(); }
+});
+let typing = null;
+$("q").addEventListener("input", () => { clearTimeout(typing); typing = setTimeout(() => showSearch(), 150); });
+$("q").addEventListener("keydown", (ev) => {
+  if (ev.key === "Enter") { clearTimeout(typing); showSearch(); }
+  if (ev.key === "Escape") { $("q").value = ""; showSearch(); }
+});
+$("fbtn").addEventListener("click", () => showSearch());
+
+// direct link to a dish: #d=<dish id>; opening a dish anywhere puts it in the address bar
+function openFromHash() {
+  const m = /^#d=([a-z]{2})-[\w-]+$/.exec(location.hash);
+  if (!m) return;
+  const id = location.hash.slice(3);
+  if (country?.id === m[1] && openDish === id && !inSearch) return;
+  inSearch = false;
+  openCountry(m[1], null, id);
+}
+addEventListener("hashchange", openFromHash);
+
+// ?selftest: run the example searches of search_cases.json and show which pass
+async function selftest() {
+  await loadFinder();
+  const { cases } = await fetch("search_cases.json", { cache: "no-store" }).then((r) => r.json());
+  const saved = JSON.stringify({ ...sq, diet: [...sq.diet], tags: [...sq.tags] });
+  const rows = [];
+  for (const c of cases) {
+    Object.assign(sq, { course: null, time: null, easy: false, occ: null, season: null, cc: null, sort: "best", mix: true });
+    sq.diet = new Set(); sq.tags = new Set();
+    const f = c.filters || {};
+    Object.assign(sq, { ...f, diet: new Set(f.diet || []), tags: new Set(f.tags || []) });
+    $("q").value = c.q;
+    const ids = searchHits().map((h) => h.e.id), byId = Object.fromEntries(finder.dishes.map((e) => [e.id, e]));
+    const fail = [];
+    const head = ids.slice(0, c.n || 10);
+    (c.top || []).forEach((id) => { if (!head.includes(id)) fail.push(`${id} not in the first ${c.n || 10}`); });
+    (c.contains || []).forEach((id) => { if (!ids.includes(id)) fail.push(`${id} missing`); });
+    (c.not || []).forEach((id) => { if (ids.includes(id)) fail.push(`${id} should not appear`); });
+    if (c.min != null && ids.length < c.min) fail.push(`${ids.length} hits, expected at least ${c.min}`);
+    if (c.max != null && ids.length > c.max) fail.push(`${ids.length} hits, expected at most ${c.max}`);
+    const ev = c.every || {};
+    ids.forEach((id) => {
+      const e = byId[id], bad = [];
+      if (ev.course && !has(e.c, ev.course)) bad.push("course");
+      if (ev.cc && e.cc !== ev.cc) bad.push("country");
+      if (ev.tag && !has(e.g, ev.tag)) bad.push("tag");
+      if (ev.diet && !has(e.diet, ev.diet) && !(ev.diet === "vegetarian" && has(e.diet, "vegan"))) bad.push("diet");
+      if (ev.maxTime && !(e.tt <= ev.maxTime)) bad.push("time");
+      if ((ev.noIng || []).some((i) => e.ing.has(i))) bad.push("ingredient");
+      if (bad.length) fail.push(`${id}: ${bad.join(", ")}`);
+    });
+    rows.push({ c, ok: !fail.length, fail, ids });
+  }
+  const s = JSON.parse(saved);
+  Object.assign(sq, { ...s, diet: new Set(s.diet), tags: new Set(s.tags) });
+  $("q").value = "";
+  const passed = rows.filter((r) => r.ok).length;
+  console.log(`selftest: ${passed}/${rows.length}`, rows.filter((r) => !r.ok));
+  inSearch = false;
+  $("title").textContent = "Selbsttest Suche";
+  $("sub").textContent = `${passed} von ${rows.length} bestanden`;
+  $("back").hidden = true;
+  $("body").innerHTML = `<ul class="hits">${rows.map((r) => `<li class="hit"><div class="head"><b>${r.ok ? "✓" : "✗"} „${esc(r.c.q)}“${r.c.filters ? ` + ${esc(JSON.stringify(r.c.filters))}` : ""}</b>
+    <span class="meta">${r.ids.length} Treffer</span></div><div class="meta">${esc(r.c.why)}</div>
+    ${r.fail.length ? `<div class="desc" style="color:#eb5757">${esc(r.fail.slice(0, 4).join("; "))}</div>` : ""}</li>`).join("")}</ul>`;
+  $("panel").classList.add("open");
+  document.body.dataset.selftest = `${passed}/${rows.length}`;
+}
+
+// the selftest needs search_cases.json, which the public build leaves out
+loadSite().then(init).then(() => (new URLSearchParams(location.search).has("selftest") && site.mode === "admin" ? selftest() : openFromHash()));
+</script>
+</body>
+</html>
