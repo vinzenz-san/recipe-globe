@@ -1,4 +1,7 @@
 {
   "mode": "public",
-  "links": [{ "text": "Site Privacy", "href": "/privacy.html" }]
+  "links": [
+    { "text": "Rezeptsammlung", "href": "/rezepte/" },
+    { "text": "Site Privacy", "href": "/privacy.html" }
+  ]
 }
